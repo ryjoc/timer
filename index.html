@@ -934,7 +934,7 @@ function updateUI(){
 
   var previewState=document.getElementById('preview-state');
   if(previewState){
-    if(running) previewState.textContent='paused';
+    if(running) previewState.textContent='running';
     else if(remaining===0 && totalSeconds>0) previewState.textContent='done!';
     else if(remaining>0 && remaining<totalSeconds) previewState.textContent='paused';
     else previewState.textContent='ready';
