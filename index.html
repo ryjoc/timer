@@ -160,7 +160,7 @@ body{
 }
 .palette-btn:hover{transform:scale(1.1);opacity:1;}
 .palette-popover{
-  position:absolute;bottom:calc(100% + 10px);left:50%;
+  position:absolute;top:calc(100% + 10px);left:50%;
   transform:translateX(-50%) scale(.9);
   background:var(--surface);border:1px solid var(--border);
   border-radius:14px;padding:12px 14px;
@@ -171,9 +171,9 @@ body{
 }
 .palette-popover.open{opacity:1;pointer-events:all;transform:translateX(-50%) scale(1);}
 .palette-popover::after{
-  content:'';position:absolute;bottom:-6px;left:50%;
+  content:'';position:absolute;top:-6px;left:50%;
   width:12px;height:12px;background:var(--surface);
-  border-right:1px solid var(--border);border-bottom:1px solid var(--border);
+  border-left:1px solid var(--border);border-top:1px solid var(--border);
   transform:translateX(-50%) rotate(45deg);
 }
 .swatch{
@@ -322,7 +322,7 @@ body{
 /* fs popover */
 .fs-palette-wrap{position:relative;}
 .fs-popover{
-  position:absolute;bottom:calc(100% + 8px);left:50%;
+  position:absolute;top:calc(100% + 8px);left:50%;
   transform:translateX(-50%) scale(.9);
   background:var(--surface);border:1px solid var(--border);
   border-radius:14px;padding:10px 12px;
@@ -333,9 +333,9 @@ body{
 }
 .fs-popover.open{opacity:1;pointer-events:all;transform:translateX(-50%) scale(1);}
 .fs-popover::after{
-  content:'';position:absolute;bottom:-6px;left:50%;
+  content:'';position:absolute;top:-6px;left:50%;
   width:12px;height:12px;background:var(--surface);
-  border-right:1px solid var(--border);border-bottom:1px solid var(--border);
+  border-left:1px solid var(--border);border-top:1px solid var(--border);
   transform:translateX(-50%) rotate(45deg);
 }
 .fs-swatch{
@@ -934,7 +934,7 @@ function updateUI(){
 
   var previewState=document.getElementById('preview-state');
   if(previewState){
-    if(running) previewState.textContent='running';
+    if(running) previewState.textContent='paused';
     else if(remaining===0 && totalSeconds>0) previewState.textContent='done!';
     else if(remaining>0 && remaining<totalSeconds) previewState.textContent='paused';
     else previewState.textContent='ready';
@@ -996,7 +996,7 @@ function doStart(){
   running=true;intervalId=setInterval(tick,1000);
   setIconState(true);
   if(pulseOn) fsSlice.classList.add('pulsing');
-  fsState.textContent='running';
+  fsState.textContent='paused';
   document.body.classList.remove('done');
   try{getAudio().resume();}catch(e){}
 }
@@ -1012,18 +1012,31 @@ function exitFs(){inFs=false;closePopovers();fsView.classList.remove('visible');
 // Setup buttons
 startBtn.addEventListener('click',function(){if(remaining<=0)return;doStart();enterFs();});
 resetBtn.addEventListener('click',function(){
-  setTimer(totalSeconds);
-  pickerH.set(Math.floor(totalSeconds/3600));
-  pickerM.set(Math.floor((totalSeconds%3600)/60));
-  pickerS.set(totalSeconds%60);
+  stopTimer();
+  totalSeconds=0;
+  remaining=0;
+  updateUI();
+  fsState.textContent='ready';
+  setIconState(false);
+  fsSlice.classList.remove('pulsing');
+  document.body.classList.remove('done');
+  pickerH.set(0,false);
+  pickerM.set(0,false);
+  pickerS.set(0,false);
+  markPresetActive(null);
 });
 
 // Fullscreen buttons
 fsPauseBtn.addEventListener('click',function(){if(running)doPause();else doStart();});
 fsExitBtn.addEventListener('click',function(){if(running)doPause();exitFs();});
 fsResetBtn.addEventListener('click',function(){
-  doPause();
-  remaining=totalSeconds;
+  stopTimer();
+  totalSeconds=0;
+  remaining=0;
+  pickerH.set(0,false);
+  pickerM.set(0,false);
+  pickerS.set(0,false);
+  markPresetActive(null);
   updateUI();fsState.textContent='ready';
   setIconState(false);fsSlice.classList.remove('pulsing');
   document.body.classList.remove('done');
