@@ -934,7 +934,7 @@ function updateUI(){
 
   var previewState=document.getElementById('preview-state');
   if(previewState){
-    if(running) previewState.textContent='running';
+    if(running) previewState.textContent='paused';
     else if(remaining===0 && totalSeconds>0) previewState.textContent='done!';
     else if(remaining>0 && remaining<totalSeconds) previewState.textContent='paused';
     else previewState.textContent='ready';
@@ -996,7 +996,7 @@ function doStart(){
   running=true;intervalId=setInterval(tick,1000);
   setIconState(true);
   if(pulseOn) fsSlice.classList.add('pulsing');
-  fsState.textContent='paused';
+  fsState.textContent='running';
   document.body.classList.remove('done');
   try{getAudio().resume();}catch(e){}
 }
