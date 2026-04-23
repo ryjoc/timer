@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<title>Timer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@200;400;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+:root{
+  --bg:#0c0c10;
+  --surface:#14141c;
+  --border:#26263a;
+  --text:#eeeeee;
+  --muted:#50506a;
+  --font-d:'Unbounded',sans-serif;
+  --font-m:'DM Mono',monospace;
+  --pie-fill:#ffffff;
+  --pie-empty:#1a1a22;
+  --pie-inv:#111111;
+  --countdown-text:var(--text);
+  --countdown-muted:var(--muted);
+  --overlay-btn-bg:rgba(20,20,28,.82);
+  --overlay-btn-border:rgba(255,255,255,.12);
+}
+
+:root.light{
+  --bg:#f0ede4;
+  --surface:#e2dfd4;
+  --border:#bab7a8;
+  --text:#18180e;
+  --muted:#80806a;
+}
+
+html,body{height:100%;overflow:hidden;}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--font-m);
+  height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:background .4s,color .4s;position:relative;
+}
+
+/* ══════════════════════════════════════
+   SETUP VIEW
+══════════════════════════════════════ */
+#setup-view{
+  display:flex;flex-direction:column;align-items:center;
+  gap:18px;padding:20px 20px 24px;width:100%;max-width:420px;
+  transition:opacity .35s,transform .35s;
+}
+#setup-view.hidden{opacity:0;pointer-events:none;transform:scale(.96);position:absolute;}
+
+.top-bar{width:100%;display:flex;align-items:center;justify-content:space-between;}
+.brand{font-family:var(--font-d);font-weight:200 !important;font-size:clamp(9px,2.2vw,12px);letter-spacing:.35em;text-transform:uppercase;color:var(--muted);}
+
+/* theme toggle */
+.theme-toggle{
+  position:relative;width:48px;height:26px;background:var(--surface);
+  border:1px solid var(--border);border-radius:100px;cursor:pointer;
+  transition:background .3s,border-color .3s;flex-shrink:0;
+}
+.toggle-knob{
+  position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;
+  background:var(--muted);
+  transition:transform .3s cubic-bezier(.34,1.4,.64,1),background .3s;pointer-events:none;
+}
+:root.light .toggle-knob{transform:translateX(22px);background:var(--pie-fill);}
+.te{position:absolute;top:50%;transform:translateY(-50%);font-size:10px;pointer-events:none;}
+.te.moon{left:5px;}.te.sun{right:4px;}
+
+/* preview pie */
+.preview-pie-wrap{position:relative;width:clamp(130px,38vw,180px);height:clamp(130px,38vw,180px);}
+.preview-pie-svg{width:100%;height:100%;overflow:visible;}
+.p-empty{fill:var(--pie-empty);transition:fill .35s;}
+.p-slice{fill:var(--pie-fill);transition:fill .3s;}
+.p-border{fill:none;stroke:var(--border);stroke-width:1.5;transition:stroke .35s;}
+.p-center-text{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:3px;pointer-events:none;
+}
+.p-digits{font-family:var(--font-d);font-weight:200;font-size:clamp(13px,4vw,20px);letter-spacing:-.02em;color:#ffffff;text-shadow:0 2px 10px rgba(0,0,0,.75),0 0 2px rgba(0,0,0,.95);}
+.p-label{font-size:8px;letter-spacing:.22em;color:var(--countdown-muted);text-transform:uppercase;}
+
+/* ════════════════════════════════════
+   iOS-STYLE PICKER
+════════════════════════════════════ */
+.picker-wrap{
+  display:flex;align-items:stretch;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:16px;overflow:hidden;
+  transition:background .35s,border-color .35s;
+  width:100%;
+  /* On mobile: single unified touch strip; on desktop: independent columns */
+}
+
+.picker-col{display:flex;flex-direction:column;align-items:center;flex:1;min-width:0;position:relative;}
+.picker-col-label{
+  font-size:8px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;
+  padding:8px 0 4px;z-index:5;position:relative;flex-shrink:0;
+}
+
+/* scroll viewport: 3 items × 44px = 132px */
+.picker-scroll{
+  height:132px;width:100%;position:relative;
+  cursor:ns-resize;touch-action:none;user-select:none;overflow:hidden;flex-shrink:0;
+}
+
+/* center highlight */
+.picker-scroll::before{
+  content:'';position:absolute;left:0;right:0;top:44px;height:44px;
+  background:rgba(128,128,128,.11);
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+  pointer-events:none;z-index:3;
+}
+/* fade masks */
+.picker-scroll::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(to bottom,var(--surface) 0%,transparent 30%),
+             linear-gradient(to top,   var(--surface) 0%,transparent 30%);
+  pointer-events:none;z-index:4;
+}
+
+.picker-list{
+  display:flex;flex-direction:column;align-items:center;
+  position:absolute;left:0;right:0;
+  transition:transform .14s cubic-bezier(.25,.8,.25,1);
+  will-change:transform;
+}
+.picker-item{
+  height:44px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-d);font-weight:200;font-size:clamp(20px,5.5vw,28px);
+  letter-spacing:-.02em;color:var(--muted);width:100%;flex-shrink:0;
+  transition:color .1s,transform .1s,opacity .1s;
+  opacity:.35;transform:scale(.73);
+}
+.picker-item.adj1{opacity:.62;transform:scale(.87);}
+.picker-item.selected{color:var(--text);opacity:1;transform:scale(1);}
+
+.picker-sep{
+  font-family:var(--font-d);font-weight:200;font-size:clamp(20px,5.5vw,26px);
+  color:var(--muted);align-self:center;padding-top:28px;z-index:4;flex-shrink:0;
+}
+
+/* presets */
+.presets{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;position:relative;z-index:50;pointer-events:auto;isolation:isolate;}
+.preset-btn{
+  background:var(--surface);border:1px solid var(--border);color:var(--muted);
+  font-family:var(--font-m);font-size:11px;letter-spacing:.05em;
+  padding:5px 12px;border-radius:100px;cursor:pointer;position:relative;z-index:51;pointer-events:auto;touch-action:manipulation;
+  transition:border-color .2s,color .2s,background .2s;
+}
+.preset-btn:hover,.preset-btn.active{border-color:var(--pie-fill);color:var(--pie-fill);background:rgba(128,128,128,.1);}
+
+/* palette popover */
+.palette-wrap{position:relative;display:flex;align-items:center;justify-content:center;}
+.palette-btn{
+  background:none;border:none;cursor:pointer;padding:4px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;opacity:.7;
+  transition:transform .2s,opacity .2s;
+}
+.palette-btn:hover{transform:scale(1.1);opacity:1;}
+.palette-popover{
+  position:absolute;bottom:calc(100% + 10px);left:50%;
+  transform:translateX(-50%) scale(.9);
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:14px;padding:12px 14px;
+  display:flex;gap:8px;flex-wrap:wrap;justify-content:center;
+  width:210px;opacity:0;pointer-events:none;
+  transition:opacity .2s,transform .2s;z-index:20;
+  box-shadow:0 8px 32px rgba(0,0,0,.35);
+}
+.palette-popover.open{opacity:1;pointer-events:all;transform:translateX(-50%) scale(1);}
+.palette-popover::after{
+  content:'';position:absolute;bottom:-6px;left:50%;
+  width:12px;height:12px;background:var(--surface);
+  border-right:1px solid var(--border);border-bottom:1px solid var(--border);
+  transform:translateX(-50%) rotate(45deg);
+}
+.swatch{
+  width:28px;height:28px;border-radius:50%;cursor:pointer;
+  border:2px solid transparent;transition:transform .15s,border-color .15s,box-shadow .15s;flex-shrink:0;
+}
+.swatch:hover{transform:scale(1.15);}
+.swatch.active{border-color:var(--text);box-shadow:0 0 0 2px var(--bg);}
+
+/* controls row */
+.controls-row{display:flex;align-items:center;gap:14px;justify-content:center;}
+.btn{
+  border:none;cursor:pointer;border-radius:100px;
+  font-family:var(--font-d);font-weight:400;letter-spacing:.06em;text-transform:uppercase;
+  transition:transform .15s,opacity .2s,background .25s,color .25s;
+}
+.btn:active{transform:scale(.93);}
+.btn-primary{background:var(--pie-fill);color:var(--pie-inv);font-size:clamp(10px,2.4vw,12px);padding:13px 38px;}
+.btn-primary:hover{opacity:.84;}
+.btn-secondary{
+  background:var(--surface);border:1px solid var(--border);color:var(--muted);
+  font-size:10px;padding:11px 20px;transition:border-color .2s,color .2s,background .35s;
+}
+.btn-secondary:hover{border-color:var(--muted);color:var(--text);}
+
+/* ══════════════════════════════════════
+   FULLSCREEN VIEW
+══════════════════════════════════════ */
+#fs-view{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .45s;z-index:10;
+}
+#fs-view.visible{opacity:1;pointer-events:all;}
+.fs-bg{position:absolute;inset:0;background:var(--bg);transition:background .35s;}
+
+/* pie circle */
+.fs-pie-wrap{position:absolute;border-radius:50%;overflow:hidden;}
+.fs-pie-svg{width:100%;height:100%;display:block;}
+.fs-empty{fill:var(--pie-empty);transition:fill .35s;}
+.fs-slice{fill:var(--pie-fill);transition:fill .3s;}
+
+@keyframes pie-pulse{0%,100%{opacity:1}50%{opacity:.62}}
+.fs-slice.pulsing{animation:pie-pulse 1.4s ease-in-out infinite;}
+
+/* overlay: same size/position as pie, set by JS */
+.fs-overlay{position:absolute;pointer-events:none;}
+
+/* time display — absolutely centered */
+.fs-center-block{
+  position:absolute;left:0;right:0;
+  top:50%;transform:translateY(-55%);
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+}
+
+/* Digit display — fully fixed-width so no layout shift ever */
+.fs-digits{
+  display:flex;align-items:center;justify-content:center;
+  white-space:nowrap;transition:color .25s;
+  color:var(--countdown-text);
+  text-shadow:0 1px 14px rgba(0,0,0,.22);
+  font-weight:200 !important;
+}
+
+/* Each digit gets an explicit fixed em slot.
+   We compute the px width of one character at runtime and set it via JS,
+   so it is guaranteed identical regardless of font rendering. */
+.digit-char{
+  font-family:var(--font-d);font-weight:200 !important;
+  font-size:clamp(28px,7.5vmin,70px);
+  letter-spacing:0;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum";
+  display:inline-block;
+  text-align:center;
+  /* width set by JS after font load */
+  transition:color .25s;
+  line-height:1;
+  color:#ffffff;
+  text-shadow:0 3px 14px rgba(0,0,0,.78),0 0 2px rgba(0,0,0,.98);
+}
+.digit-sep{
+  font-family:var(--font-d);font-weight:200 !important;
+  font-size:clamp(28px,7.5vmin,70px);
+  display:inline-block;
+  text-align:center;
+  opacity:1;
+  line-height:1;
+  transition:color .25s;
+  color:#ffffff;
+  text-shadow:0 3px 14px rgba(0,0,0,.78),0 0 2px rgba(0,0,0,.98);
+  /* width = digit-char width (same slot rhythm) — set by JS */
+}
+
+.fs-state{
+  font-size:clamp(8px,1.5vmin,11px);letter-spacing:.28em;text-transform:uppercase;
+  text-align:center;transition:color .25s;
+  color:#ffffff;
+  text-shadow:0 2px 10px rgba(0,0,0,.72),0 0 2px rgba(0,0,0,.95);
+  min-height:1.4em;display:flex;align-items:center;justify-content:center;
+}
+
+
+/* controls block — bottom of circle */
+.fs-controls-block{
+  position:absolute;left:0;right:0;
+  bottom:18%;
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  pointer-events:all;
+}
+
+/* PRIMARY icon buttons (back, play, reset) */
+.fs-btn-row-primary{display:flex;gap:14px;align-items:center;}
+.fs-icon-btn{
+  border:none;cursor:pointer;border-radius:50%;
+  /* size set by CSS var overridden per group */
+  --ibtn-size: clamp(44px,10vmin,58px);
+  width:var(--ibtn-size);height:var(--ibtn-size);
+  display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  transition:transform .14s,opacity .2s,background .2s,color .2s,border-color .2s;
+  flex-shrink:0;
+}
+.fs-icon-btn:active{transform:scale(.86);}
+.fs-icon-btn svg{display:block;pointer-events:none;}
+
+/* SECONDARY icon buttons (palette, pulse) — 50% size */
+.fs-btn-row-secondary{display:flex;gap:12px;align-items:center;}
+.fs-icon-btn-sm{
+  border:none;cursor:pointer;border-radius:50%;
+  --ibtn-sm-size: clamp(22px,5vmin,29px);
+  width:var(--ibtn-sm-size);height:var(--ibtn-sm-size);
+  display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  transition:transform .14s,opacity .2s,background .2s,color .2s,border-color .2s;
+  flex-shrink:0;opacity:.65;
+}
+.fs-icon-btn-sm:active{transform:scale(.86);}
+.fs-icon-btn-sm.active{opacity:1;}
+.fs-icon-btn-sm svg{display:block;pointer-events:none;}
+
+@keyframes heartbeat{
+  0%{transform:scale(1)}14%{transform:scale(1.3)}28%{transform:scale(1)}42%{transform:scale(1.15)}70%,100%{transform:scale(1)}
+}
+#fs-pulse-btn.active .pulse-icon{animation:heartbeat 1s ease-in-out infinite;}
+
+/* fs popover */
+.fs-palette-wrap{position:relative;}
+.fs-popover{
+  position:absolute;bottom:calc(100% + 8px);left:50%;
+  transform:translateX(-50%) scale(.9);
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:14px;padding:10px 12px;
+  display:flex;gap:7px;flex-wrap:wrap;justify-content:center;
+  width:200px;opacity:0;pointer-events:none;
+  transition:opacity .2s,transform .2s;z-index:20;
+  box-shadow:0 6px 28px rgba(0,0,0,.4);
+}
+.fs-popover.open{opacity:1;pointer-events:all;transform:translateX(-50%) scale(1);}
+.fs-popover::after{
+  content:'';position:absolute;bottom:-6px;left:50%;
+  width:12px;height:12px;background:var(--surface);
+  border-right:1px solid var(--border);border-bottom:1px solid var(--border);
+  transform:translateX(-50%) rotate(45deg);
+}
+.fs-swatch{
+  width:24px;height:24px;border-radius:50%;cursor:pointer;
+  border:2px solid transparent;transition:transform .15s,border-color .15s,box-shadow .15s;
+}
+.fs-swatch:hover{transform:scale(1.15);}
+.fs-swatch.active{border-color:var(--text);box-shadow:0 0 0 2px var(--bg);}
+
+@keyframes done-flash{0%,100%{background:var(--bg)}50%{background:rgba(255,68,102,.08)}}
+body.done{animation:done-flash .55s ease-in-out 5;}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ SETUP VIEW ══════════════════ -->
+<div id="setup-view">
+
+  <div class="top-bar">
+    <div class="brand">Focus Timer</div>
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+      <span class="te moon">🌙</span><span class="te sun">☀️</span>
+      <div class="toggle-knob"></div>
+    </button>
+  </div>
+
+  <div class="preview-pie-wrap">
+    <svg class="preview-pie-svg" viewBox="0 0 100 100">
+      <circle class="p-empty" cx="50" cy="50" r="50"/>
+      <path class="p-slice" id="preview-slice" d="M50,50 L50,0 A50,50 0 1,1 49.99999,0 Z"/>
+      <circle class="p-border" cx="50" cy="50" r="49.5"/>
+    </svg>
+    <div class="p-center-text">
+      <div class="p-digits" id="preview-display">00:00:00</div>
+      <div class="p-label" id="preview-state">ready</div>
+    </div>
+  </div>
+
+  <!-- iOS picker -->
+  <div class="picker-wrap" id="picker-wrap">
+    <div class="picker-col">
+      <div class="picker-col-label">hr</div>
+      <div class="picker-scroll" id="ps-h"></div>
+    </div>
+    <div class="picker-sep">:</div>
+    <div class="picker-col">
+      <div class="picker-col-label">min</div>
+      <div class="picker-scroll" id="ps-m"></div>
+    </div>
+    <div class="picker-sep">:</div>
+    <div class="picker-col">
+      <div class="picker-col-label">sec</div>
+      <div class="picker-scroll" id="ps-s"></div>
+    </div>
+  </div>
+
+  <div class="presets">
+    <button type="button" class="preset-btn" data-h="0" data-m="1"  data-s="0">1 min</button>
+    <button type="button" class="preset-btn" data-h="0" data-m="5"  data-s="0">5 min</button>
+    <button type="button" class="preset-btn" data-h="0" data-m="15" data-s="0">15 min</button>
+    <button type="button" class="preset-btn" data-h="0" data-m="30" data-s="0">30 min</button>
+    <button type="button" class="preset-btn" data-h="1" data-m="0" data-s="0">1 hr</button>
+  </div>
+
+  <div class="controls-row">
+    <button class="btn btn-secondary" id="reset-btn">Reset</button>
+    <button class="btn btn-primary" id="start-btn">Start</button>
+    <div class="palette-wrap">
+      <button class="palette-btn" id="palette-btn" aria-label="Pick colour">
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+          <circle cx="13" cy="13" r="11.5" stroke="currentColor" stroke-width="1.4" fill="none" opacity=".5"/>
+          <circle cx="9"  cy="10" r="2.8" fill="#e8f542"/>
+          <circle cx="17" cy="10" r="2.8" fill="#42e8f5"/>
+          <circle cx="13" cy="17" r="2.8" fill="#ff4d80"/>
+          <circle cx="9"  cy="17" r="2.8" fill="none" stroke="currentColor" stroke-width=".8" opacity=".3"/>
+        </svg>
+      </button>
+      <div class="palette-popover" id="palette-popover"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════ FULLSCREEN VIEW ══════════════════ -->
+<div id="fs-view">
+  <div class="fs-bg"></div>
+  <div class="fs-pie-wrap" id="fs-pie-wrap">
+    <svg class="fs-pie-svg" viewBox="0 0 100 100">
+      <circle class="fs-empty" cx="50" cy="50" r="50"/>
+      <path class="fs-slice" id="fs-slice" d="M50,50 L50,0 A50,50 0 1,1 49.99999,0 Z"/>
+    </svg>
+  </div>
+  <div class="fs-overlay" id="fs-overlay">
+
+    <!-- Time — true center -->
+    <div class="fs-center-block">
+      <div class="fs-digits" id="fs-display">
+        <span class="digit-char" id="fd-h0">0</span><span class="digit-char" id="fd-h1">0</span>
+        <span class="digit-sep" id="fd-sep1">:</span>
+        <span class="digit-char" id="fd-m0">0</span><span class="digit-char" id="fd-m1">0</span>
+        <span class="digit-sep" id="fd-sep2">:</span>
+        <span class="digit-char" id="fd-s0">0</span><span class="digit-char" id="fd-s1">0</span>
+      </div>
+      <div class="fs-state" id="fs-state">ready</div>
+    </div>
+
+    <!-- Controls — bottom of circle -->
+    <div class="fs-controls-block">
+      <!-- Row 1: Back · Play/Pause · Reset (all same size) -->
+      <div class="fs-btn-row-primary">
+        <button class="fs-icon-btn" id="fs-exit-btn" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <button class="fs-icon-btn" id="fs-pause-btn" aria-label="Play/Pause">
+          <svg id="fs-pause-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+            <rect x="6" y="4" width="4" height="16" rx="1.5"/>
+            <rect x="14" y="4" width="4" height="16" rx="1.5"/>
+          </svg>
+          <svg id="fs-play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="6,3 20,12 6,21"/>
+          </svg>
+        </button>
+        <button class="fs-icon-btn" id="fs-reset-btn" aria-label="Reset">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1 4 1 10 7 10"/>
+            <path d="M3.51 15a9 9 0 1 0 .49-4.5"/>
+          </svg>
+        </button>
+      </div>
+      <!-- Row 2: Palette · Pulse (50% size) -->
+      <div class="fs-btn-row-secondary">
+        <div class="fs-palette-wrap">
+          <button class="fs-icon-btn-sm" id="fs-palette-btn" aria-label="Pick colour">
+            <svg width="14" height="14" viewBox="0 0 26 26" fill="none">
+              <circle cx="13" cy="13" r="11.5" stroke="currentColor" stroke-width="1.8" fill="none" opacity=".6"/>
+              <circle cx="9"  cy="10" r="3" fill="#e8f542"/>
+              <circle cx="17" cy="10" r="3" fill="#42e8f5"/>
+              <circle cx="13" cy="17" r="3" fill="#ff4d80"/>
+            </svg>
+          </button>
+          <div class="fs-popover" id="fs-popover"></div>
+        </div>
+        <button class="fs-icon-btn-sm" id="fs-pulse-btn" aria-label="Toggle pulse">
+          <svg class="pulse-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// COLORS
+// ═══════════════════════════════════════════════════
+var COLORS = [
+  { id:'mono-d', fill:'#ffffff', emptyD:'#1a1a22', emptyL:'#d0cdc4', label:'White' },
+  { id:'mono-l', fill:'#111111', emptyD:'#e8e8e8', emptyL:'#e0ddd4', label:'Black' },
+  { id:'lime',   fill:'#d4f020', emptyD:'#181f06', emptyL:'#cdd4b0', label:'Lime'   },
+  { id:'cyan',   fill:'#22e5f0', emptyD:'#061518', emptyL:'#b0d4d8', label:'Cyan'   },
+  { id:'orange', fill:'#ff8c2a', emptyD:'#1a0e04', emptyL:'#d4c0a8', label:'Orange' },
+  { id:'rose',   fill:'#ff4d80', emptyD:'#1a0410', emptyL:'#d4aab8', label:'Rose'   },
+  { id:'violet', fill:'#a855f7', emptyD:'#100818', emptyL:'#c8b8d8', label:'Violet' },
+  { id:'amber',  fill:'#fbbf24', emptyD:'#1a1404', emptyL:'#d4c898', label:'Amber'  },
+  { id:'mint',   fill:'#34d399', emptyD:'#041210', emptyL:'#a8d0c0', label:'Mint'   },
+];
+
+// ═══════════════════════════════════════════════════
+// COLOR UTILS
+// ═══════════════════════════════════════════════════
+function hexToRgb(hex){
+  return {r:parseInt(hex.slice(1,3),16),g:parseInt(hex.slice(3,5),16),b:parseInt(hex.slice(5,7),16)};
+}
+function rgbToHex(r,g,b){
+  return '#'+[r,g,b].map(function(v){return ('0'+Math.round(v).toString(16)).slice(-2);}).join('');
+}
+// Lighten a hex color toward white by ratio (0=same, 1=white)
+function lightenHex(hex, ratio){
+  var c=hexToRgb(hex);
+  return rgbToHex(c.r+(255-c.r)*ratio, c.g+(255-c.g)*ratio, c.b+(255-c.b)*ratio);
+}
+// Darken by mixing with black
+function darkenHex(hex, ratio){
+  var c=hexToRgb(hex);
+  return rgbToHex(c.r*(1-ratio), c.g*(1-ratio), c.b*(1-ratio));
+}
+function darkenRelative(hex, ratio){
+  return darkenHex(hex, Math.max(0, Math.min(0.95, ratio)));
+}
+function relativeLuminance(hex){
+  var c=hexToRgb(hex);
+  var r=c.r/255, g=c.g/255, b=c.b/255;
+  function lin(x){ return x<=0.04045?x/12.92:Math.pow((x+0.055)/1.055,2.4); }
+  return 0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b);
+}
+function contrastRatio(h1,h2){
+  var l1=relativeLuminance(h1),l2=relativeLuminance(h2);
+  var hi=Math.max(l1,l2),lo=Math.min(l1,l2);
+  return (hi+0.05)/(lo+0.05);
+}
+function bestContrast(bg){
+  return contrastRatio(bg,'#ffffff')>=contrastRatio(bg,'#111111')?'#ffffff':'#111111';
+}
+
+// ═══════════════════════════════════════════════════
+// THEME & COLOR STATE
+// ═══════════════════════════════════════════════════
+var root=document.documentElement;
+var isLight=localStorage.getItem('timer-theme')==='light';
+if(isLight) root.classList.add('light');
+
+var savedCid=localStorage.getItem('timer-color')||'mono-d';
+var currentColor=COLORS.find(function(c){return c.id===savedCid;})||COLORS[0];
+
+function applyColor(c, save){
+  currentColor=c;
+  if(save!==false) localStorage.setItem('timer-color',c.id);
+  // Empty region: darken fill by 65% (keeps hue, clearly darker than fill)
+  var emptyColor=darkenHex(c.fill,0.65);
+  // Use one consistent text treatment in setup + fullscreen so the countdown looks the same in both views.
+  var textCol=isLight ? '#18180e' : '#eeeeee';
+  var mutedCol=isLight ? '#80806a' : '#50506a';
+  var overlayBtnBg=isLight ? 'rgba(240,237,228,.88)' : 'rgba(20,20,28,.82)';
+  var overlayBtnBorder=isLight ? 'rgba(24,24,14,.12)' : 'rgba(255,255,255,.12)';
+  var startText=bestContrast(c.fill);
+  root.style.setProperty('--pie-fill',c.fill);
+  root.style.setProperty('--pie-empty',emptyColor);
+  root.style.setProperty('--pie-inv',startText);
+  root.style.setProperty('--countdown-text',textCol);
+  root.style.setProperty('--countdown-muted',mutedCol);
+  root.style.setProperty('--overlay-btn-bg',overlayBtnBg);
+  root.style.setProperty('--overlay-btn-border',overlayBtnBorder);
+  document.querySelectorAll('.swatch,.fs-swatch').forEach(function(sw){
+    sw.classList.toggle('active',sw.dataset.cid===c.id);
+  });
+  var sb=document.getElementById('start-btn');
+  if(sb){sb.style.background=c.fill;sb.style.color=startText;}
+  updateUI();
+}
+
+function applyTheme(light){
+  isLight=light;
+  if(light) root.classList.add('light');
+  else      root.classList.remove('light');
+  localStorage.setItem('timer-theme',light?'light':'dark');
+  applyColor(currentColor,false);
+}
+
+document.getElementById('theme-toggle').addEventListener('click',function(){applyTheme(!isLight);});
+
+// ═══════════════════════════════════════════════════
+// BUILD SWATCHES
+// ═══════════════════════════════════════════════════
+function buildSwatches(container, cls){
+  COLORS.forEach(function(c){
+    var sw=document.createElement('div');
+    sw.className=cls+(c.id===currentColor.id?' active':'');
+    sw.dataset.cid=c.id;
+    sw.style.background=c.fill;
+    sw.style.border='2px solid '+(c.fill==='#111111'||c.fill==='#ffffff'?'#888':'transparent');
+    sw.title=c.label;
+    sw.addEventListener('click',function(){applyColor(c);closePopovers();});
+    container.appendChild(sw);
+  });
+}
+buildSwatches(document.getElementById('palette-popover'),'swatch');
+buildSwatches(document.getElementById('fs-popover'),'fs-swatch');
+
+function closePopovers(){
+  document.getElementById('palette-popover').classList.remove('open');
+  document.getElementById('fs-popover').classList.remove('open');
+}
+document.getElementById('palette-btn').addEventListener('click',function(e){
+  e.stopPropagation();
+  var p=document.getElementById('palette-popover');
+  var was=p.classList.contains('open');closePopovers();if(!was)p.classList.add('open');
+});
+document.getElementById('fs-palette-btn').addEventListener('click',function(e){
+  e.stopPropagation();
+  var p=document.getElementById('fs-popover');
+  var was=p.classList.contains('open');closePopovers();if(!was)p.classList.add('open');
+});
+document.addEventListener('click',closePopovers);
+
+// ═══════════════════════════════════════════════════
+// AUDIO
+// ═══════════════════════════════════════════════════
+var audioCtx=null;
+function getAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx;}
+function playDone(){
+  try{
+    var ctx=getAudio();
+    [[880,.0,.18],[1100,.22,.18],[1320,.44,.35]].forEach(function(b){
+      var o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);o.type='sine';
+      o.frequency.setValueAtTime(b[0],ctx.currentTime+b[1]);
+      g.gain.setValueAtTime(0,ctx.currentTime+b[1]);
+      g.gain.linearRampToValueAtTime(.4,ctx.currentTime+b[1]+.02);
+      g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+b[1]+b[2]);
+      o.start(ctx.currentTime+b[1]);o.stop(ctx.currentTime+b[1]+b[2]+.05);
+    });
+  }catch(e){}
+}
+document.addEventListener('click',function(){try{getAudio().resume();}catch(e){}},{once:true});
+
+// ═══════════════════════════════════════════════════
+// PIE PATH
+// ═══════════════════════════════════════════════════
+function pieD(frac){
+  if(frac<=0) return 'M50,50 L50,50';
+  if(frac>=1) return 'M50,50 L50,0 A50,50 0 1,1 49.99999,0 Z';
+  var a=frac*2*Math.PI;
+  var x=50+50*Math.sin(a), y=50-50*Math.cos(a);
+  return 'M50,50 L50,0 A50,50 0 '+(frac>.5?1:0)+',1 '+x.toFixed(4)+','+y.toFixed(4)+' Z';
+}
+
+// ═══════════════════════════════════════════════════
+// DIGIT WIDTH CALIBRATION
+// ensures every digit-char and digit-sep has identical fixed pixel width
+// so the time display never shifts
+// ═══════════════════════════════════════════════════
+function calibrateDigits(){
+  var sample=document.getElementById('fd-h0');
+  if(!sample) return;
+  var cs=window.getComputedStyle(sample);
+  var fs=parseFloat(cs.fontSize);
+  // Unbounded is not strictly monospaced, but '0'-'9' are close.
+  // Measure the widest digit ('0') and lock all to that.
+  var tmp=document.createElement('span');
+  tmp.style.cssText='font-family:'+cs.fontFamily+';font-size:'+fs+'px;font-weight:'+cs.fontWeight+
+    ';visibility:hidden;position:absolute;white-space:nowrap;font-variant-numeric:tabular-nums;';
+  tmp.textContent='00';
+  document.body.appendChild(tmp);
+  var pairW=tmp.getBoundingClientRect().width;
+  document.body.removeChild(tmp);
+  var charW=Math.ceil(pairW/2)+2; // +2px breathing room
+  var sepW=Math.ceil(charW*0.55);
+  document.querySelectorAll('.digit-char').forEach(function(el){el.style.width=charW+'px';});
+  document.querySelectorAll('.digit-sep').forEach(function(el){el.style.width=sepW+'px';});
+}
+// Run after font likely loaded
+document.fonts ? document.fonts.ready.then(calibrateDigits) : setTimeout(calibrateDigits,300);
+window.addEventListener('resize',calibrateDigits);
+
+// ═══════════════════════════════════════════════════
+// FS PIE SIZING
+// ═══════════════════════════════════════════════════
+var fsPieWrap=document.getElementById('fs-pie-wrap');
+var fsOverlay=document.getElementById('fs-overlay');
+function sizeFsPie(){
+  var vw=window.innerWidth, vh=window.innerHeight;
+  var sz=Math.min(vw,vh)*0.86;
+  var l=(vw-sz)/2, t=(vh-sz)/2;
+  var base='position:absolute;width:'+sz+'px;height:'+sz+'px;left:'+l+'px;top:'+t+'px;';
+  fsPieWrap.style.cssText=base+'border-radius:50%;overflow:hidden;';
+  fsOverlay.style.cssText=base+'pointer-events:none;';
+}
+sizeFsPie();
+window.addEventListener('resize',function(){sizeFsPie();calibrateDigits();});
+
+// ═══════════════════════════════════════════════════
+// iOS PICKER — independent scroll per column on desktop,
+// unified horizontal swipe to select column on mobile
+// ═══════════════════════════════════════════════════
+var ITEM_H=44;
+var WHEEL_STEP_PX=90;
+var DRAG_MOMENTUM=24;
+var isMobile=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)||window.innerWidth<600;
+
+function makePicker(el, maxVal, initial){
+  var current=initial;
+
+  var list=document.createElement('div');
+  list.className='picker-list';
+  var items=[];
+  for(var i=0;i<maxVal;i++){
+    var item=document.createElement('div');
+    item.className='picker-item';
+    item.textContent=String(i).padStart(2,'0');
+    list.appendChild(item);
+    items.push(item);
+  }
+  el.appendChild(list);
+
+  // offset so value v is centered in 3-row viewport
+  function getOffset(v){ return ITEM_H - v*ITEM_H; }
+  function clamp(v){ return Math.max(0,Math.min(maxVal-1,Math.round(v))); }
+
+  function render(animate){
+    if(!animate) list.style.transition='none';
+    list.style.transform='translateY('+getOffset(current)+'px)';
+    if(!animate){ void list.offsetHeight; list.style.transition=''; }
+    items.forEach(function(item,i){
+      var d=Math.abs(i-current);
+      item.classList.remove('selected','adj1');
+      if(d===0) item.classList.add('selected');
+      else if(d===1) item.classList.add('adj1');
+    });
+  }
+
+  function set(v, animate){
+    current=clamp(v);
+    render(animate!==false);
+  }
+  function get(){ return current; }
+  set(initial,false);
+
+  // ── Desktop: wheel on this specific column ──
+  if(!isMobile){
+    var wheelAcc=0;
+    el.addEventListener('wheel',function(e){
+      e.preventDefault();e.stopPropagation();
+      wheelAcc+=e.deltaY;
+      if(Math.abs(wheelAcc) < WHEEL_STEP_PX) return;
+      var steps=wheelAcc>0?1:-1;
+      wheelAcc=0;
+      set(current+steps);
+      markPresetActive(null);syncFromPickers();
+    },{passive:false});
+  }
+
+  // ── Touch drag (works on both mobile and desktop touch) ──
+  var ty=0, acc=0, vel=0, lastY=0, lastT=0;
+  el.addEventListener('touchstart',function(e){
+    if(isMobile) return; // mobile uses unified handler
+    e.preventDefault();
+    ty=e.touches[0].clientY;lastY=ty;lastT=Date.now();acc=0;vel=0;
+    list.style.transition='none';
+  },{passive:false});
+  el.addEventListener('touchmove',function(e){
+    if(isMobile) return;
+    e.preventDefault();
+    var y=e.touches[0].clientY,now=Date.now();
+    vel=(lastY-y)/(now-lastT||1);lastY=y;lastT=now;
+    acc+=lastY-y; // note: this double-counts but keep for consistency
+    acc=ty-y;
+    list.style.transform='translateY('+(getOffset(current)-acc)+'px)';
+    var near=clamp(current+acc/ITEM_H);
+    items.forEach(function(it,i){
+      var d=Math.abs(i-near);it.classList.remove('selected','adj1');
+      if(d===0)it.classList.add('selected');else if(d===1)it.classList.add('adj1');
+    });
+  },{passive:false});
+  el.addEventListener('touchend',function(e){
+    if(isMobile) return;
+    e.preventDefault();
+    list.style.transition='';
+    set(current+Math.round((acc+vel*DRAG_MOMENTUM)/ITEM_H));
+    acc=0;vel=0;markPresetActive(null);syncFromPickers();
+  },{passive:false});
+
+  // click top/bottom half
+  el.addEventListener('click',function(e){
+    if(isMobile) return;
+    var r=el.getBoundingClientRect();
+    set(current+(e.clientY-r.top<r.height/2?-1:1));
+    markPresetActive(null);syncFromPickers();
+  });
+
+  return {get:get, set:set};
+}
+
+var pickerH=makePicker(document.getElementById('ps-h'),24,0);
+var pickerM=makePicker(document.getElementById('ps-m'),60,0);
+var pickerS=makePicker(document.getElementById('ps-s'),60,0);
+
+// ── Mobile: unified touch on the whole picker-wrap ──
+if(isMobile){
+  var pickerWrap=document.getElementById('picker-wrap');
+  // Detect which column is active by touch X position
+  var mTouchX=0, mTouchY=0, mAcc=0, mVel=0, mLastY=0, mLastT=0;
+  var mActivePicker=null;
+
+  function getPickerAtX(x){
+    var cols=pickerWrap.querySelectorAll('.picker-scroll');
+    for(var i=0;i<cols.length;i++){
+      var r=cols[i].getBoundingClientRect();
+      if(x>=r.left&&x<=r.right) return {picker:[pickerH,pickerM,pickerS][i], el:cols[i]};
+    }
+    return null;
+  }
+
+  pickerWrap.addEventListener('touchstart',function(e){
+    e.preventDefault();
+    var t=e.touches[0];
+    mTouchX=t.clientX;mTouchY=t.clientY;
+    mLastY=mTouchY;mLastT=Date.now();mAcc=0;mVel=0;
+    var hit=getPickerAtX(mTouchX);
+    mActivePicker=hit?hit.picker:null;
+    if(mActivePicker){
+      var list=mActivePicker.el||hit.el.querySelector('.picker-list');
+    }
+  },{passive:false});
+
+  // Re-map picker scroll elements
+  var psEls={h:document.getElementById('ps-h'),m:document.getElementById('ps-m'),s:document.getElementById('ps-s')};
+  var pickers=[pickerH,pickerM,pickerS];
+  var pickerEls=[psEls.h,psEls.m,psEls.s];
+
+  pickerWrap.addEventListener('touchstart',function(e){
+    e.preventDefault();
+    var t=e.touches[0];
+    mTouchX=t.clientX;mTouchY=t.clientY;mLastY=mTouchY;mLastT=Date.now();mAcc=0;mVel=0;
+    mActivePicker=null;
+    for(var i=0;i<pickerEls.length;i++){
+      var r=pickerEls[i].getBoundingClientRect();
+      if(mTouchX>=r.left&&mTouchX<=r.right){mActivePicker=pickers[i];break;}
+    }
+  },{passive:false});
+
+  pickerWrap.addEventListener('touchmove',function(e){
+    e.preventDefault();
+    if(!mActivePicker) return;
+    var y=e.touches[0].clientY,now=Date.now();
+    mVel=(mLastY-y)/(now-mLastT||1);mLastY=y;mLastT=now;
+    mAcc=mTouchY-y;
+    // live visual feedback
+    var cur=mActivePicker.get();
+    // find list element
+    for(var i=0;i<pickers.length;i++){
+      if(pickers[i]===mActivePicker){
+        var list=pickerEls[i].querySelector('.picker-list');
+        var off=ITEM_H-cur*ITEM_H-mAcc;
+        if(list) list.style.transform='translateY('+off+'px)';
+        // highlight nearest
+        var near=Math.max(0,Math.min(59,Math.round(cur+mAcc/ITEM_H)));
+        pickerEls[i].querySelectorAll('.picker-item').forEach(function(it,idx){
+          var d=Math.abs(idx-near);it.classList.remove('selected','adj1');
+          if(d===0)it.classList.add('selected');else if(d===1)it.classList.add('adj1');
+        });
+        break;
+      }
+    }
+  },{passive:false});
+
+  pickerWrap.addEventListener('touchend',function(e){
+    e.preventDefault();
+    if(!mActivePicker) return;
+    var steps=Math.round((mAcc+mVel*DRAG_MOMENTUM)/ITEM_H);
+    mActivePicker.set(mActivePicker.get()+steps);
+    mAcc=0;mVel=0;mActivePicker=null;
+    markPresetActive(null);syncFromPickers();
+  },{passive:false});
+}
+
+// ═══════════════════════════════════════════════════
+// TIMER STATE
+// ═══════════════════════════════════════════════════
+var totalSeconds=0, remaining=0;
+var intervalId=null, running=false, inFs=false;
+var pulseOn=false;
+
+var previewSlice=document.getElementById('preview-slice');
+var previewDisp=document.getElementById('preview-display');
+var fsSlice=document.getElementById('fs-slice');
+var fsState=document.getElementById('fs-state');
+var fsView=document.getElementById('fs-view');
+var setupView=document.getElementById('setup-view');
+var fsPauseBtn=document.getElementById('fs-pause-btn');
+var fsExitBtn=document.getElementById('fs-exit-btn');
+var fsResetBtn=document.getElementById('fs-reset-btn');
+var startBtn=document.getElementById('start-btn');
+var resetBtn=document.getElementById('reset-btn');
+var presetBtns=document.querySelectorAll('.preset-btn');
+
+function pad(n){return String(n).padStart(2,'0');}
+function fmt(s){return pad(Math.floor(s/3600))+':'+pad(Math.floor((s%3600)/60))+':'+pad(s%60);}
+
+var fdH0=document.getElementById('fd-h0'),fdH1=document.getElementById('fd-h1');
+var fdM0=document.getElementById('fd-m0'),fdM1=document.getElementById('fd-m1');
+var fdS0=document.getElementById('fd-s0'),fdS1=document.getElementById('fd-s1');
+
+function setDigits(s){
+  var hh=pad(Math.floor(s/3600)),mm=pad(Math.floor((s%3600)/60)),ss=pad(s%60);
+  fdH0.textContent=hh[0];fdH1.textContent=hh[1];
+  fdM0.textContent=mm[0];fdM1.textContent=mm[1];
+  fdS0.textContent=ss[0];fdS1.textContent=ss[1];
+}
+
+function setIconState(isRunning){
+  document.getElementById('fs-pause-icon').style.display=isRunning?'block':'none';
+  document.getElementById('fs-play-icon').style.display=isRunning?'none':'block';
+}
+
+function updateUI(){
+  var frac=totalSeconds>0?remaining/totalSeconds:0;
+  var d=pieD(frac);
+  previewSlice.setAttribute('d',d);
+  fsSlice.setAttribute('d',d);
+  previewDisp.textContent=fmt(remaining);
+  setDigits(remaining);
+
+  var previewState=document.getElementById('preview-state');
+  if(previewState){
+    if(running) previewState.textContent='running';
+    else if(remaining===0 && totalSeconds>0) previewState.textContent='done!';
+    else if(remaining>0 && remaining<totalSeconds) previewState.textContent='paused';
+    else previewState.textContent='ready';
+  }
+
+  // Keep timer colors unchanged under 1 minute.
+  var activeFill=currentColor.fill;
+  previewSlice.style.fill=activeFill;
+  fsSlice.style.fill=activeFill;
+
+  var textColor='#ffffff';
+  var iconBg='rgba(0,0,0,.42)';
+  var iconBorder='rgba(255,255,255,.88)';
+
+  var fsDigEl=document.getElementById('fs-display');
+  if(fsDigEl) fsDigEl.style.color=textColor;
+  fsState.style.color=textColor;
+
+  [fsPauseBtn,fsExitBtn,fsResetBtn].forEach(function(b){
+    b.style.background=iconBg;b.style.color=textColor;b.style.border='1.5px solid '+iconBorder;b.style.boxShadow='0 4px 18px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.08)';
+  });
+  document.querySelectorAll('.fs-icon-btn-sm').forEach(function(b){
+    b.style.background=iconBg;b.style.color=textColor;b.style.border='1.5px solid '+iconBorder;b.style.boxShadow='0 4px 18px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.08)';
+  });
+
+  var pulseBtn=document.getElementById('fs-pulse-btn');
+  if(pulseBtn){
+    pulseBtn.classList.toggle('active',pulseOn);
+    var pIcon=pulseBtn.querySelector('.pulse-icon');
+    if(pIcon) pIcon.style.stroke=pulseOn?currentColor.fill:textColor;
+  }
+}
+
+function stopTimer(){clearInterval(intervalId);intervalId=null;running=false;}
+
+function setTimer(secs){
+  stopTimer();totalSeconds=secs;remaining=secs;
+  updateUI();fsState.textContent='ready';
+  setIconState(false);fsSlice.classList.remove('pulsing');
+  document.body.classList.remove('done');
+}
+
+function tick(){
+  if(remaining<=0){
+    stopTimer();remaining=0;updateUI();
+    fsState.textContent='done!';setIconState(false);
+    fsSlice.classList.remove('pulsing');
+    document.body.classList.add('done');playDone();
+    document.body.addEventListener('animationend',function(){document.body.classList.remove('done');},{once:true});
+    return;
+  }
+  remaining--;updateUI();
+  var h=Math.floor(remaining/3600),m=Math.floor((remaining%3600)/60),s=remaining%60;
+  fsState.textContent=h>0?h+'h '+pad(m)+'m left':m+'m '+pad(s)+'s left';
+}
+
+function doStart(){
+  if(remaining<=0) return;
+  running=true;intervalId=setInterval(tick,1000);
+  setIconState(true);
+  if(pulseOn) fsSlice.classList.add('pulsing');
+  fsState.textContent='running';
+  document.body.classList.remove('done');
+  try{getAudio().resume();}catch(e){}
+}
+function doPause(){
+  stopTimer();setIconState(false);
+  fsSlice.classList.remove('pulsing');
+  if(remaining>0&&remaining<totalSeconds) fsState.textContent='paused';
+}
+
+function enterFs(){inFs=true;closePopovers();setupView.classList.add('hidden');fsView.classList.add('visible');sizeFsPie();}
+function exitFs(){inFs=false;closePopovers();fsView.classList.remove('visible');setupView.classList.remove('hidden');}
+
+// Setup buttons
+startBtn.addEventListener('click',function(){if(remaining<=0)return;doStart();enterFs();});
+resetBtn.addEventListener('click',function(){
+  setTimer(totalSeconds);
+  pickerH.set(Math.floor(totalSeconds/3600));
+  pickerM.set(Math.floor((totalSeconds%3600)/60));
+  pickerS.set(totalSeconds%60);
+});
+
+// Fullscreen buttons
+fsPauseBtn.addEventListener('click',function(){if(running)doPause();else doStart();});
+fsExitBtn.addEventListener('click',function(){if(running)doPause();exitFs();});
+fsResetBtn.addEventListener('click',function(){
+  doPause();
+  remaining=totalSeconds;
+  updateUI();fsState.textContent='ready';
+  setIconState(false);fsSlice.classList.remove('pulsing');
+  document.body.classList.remove('done');
+});
+
+// Pulse toggle
+document.getElementById('fs-pulse-btn').addEventListener('click',function(e){
+  e.stopPropagation();
+  pulseOn=!pulseOn;
+  if(pulseOn&&running) fsSlice.classList.add('pulsing');
+  else fsSlice.classList.remove('pulsing');
+  updateUI();
+});
+
+// Presets
+function markPresetActive(btn){presetBtns.forEach(function(b){b.classList.remove('active');});if(btn)btn.classList.add('active');}
+function applyPresetValues(h,m,s,btn){
+  pickerH.set(h,false);pickerM.set(m,false);pickerS.set(s,false);
+  markPresetActive(btn||null);
+  setTimer(h*3600+m*60+s);
+}
+function applyPresetFromButton(btn){
+  if(!btn) return;
+  var h=parseInt(btn.dataset.h,10)||0;
+  var m=parseInt(btn.dataset.m,10)||0;
+  var s=parseInt(btn.dataset.s,10)||0;
+  applyPresetValues(h,m,s,btn);
+}
+var presetsWrap=document.querySelector('.presets');
+function handlePresetEvent(e){
+  var btn=e.target && e.target.closest ? e.target.closest('.preset-btn') : null;
+  if(!btn || !presetsWrap.contains(btn)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  applyPresetFromButton(btn);
+}
+presetBtns.forEach(function(btn){
+  btn.type='button';
+  btn.addEventListener('click',handlePresetEvent,{passive:false});
+  btn.addEventListener('pointerup',handlePresetEvent,{passive:false});
+});
+presetsWrap.addEventListener('click',handlePresetEvent,true);
+presetsWrap.addEventListener('pointerup',handlePresetEvent,true);
+function syncFromPickers(){
+  var secs=pickerH.get()*3600+pickerM.get()*60+pickerS.get();
+  setTimer(secs);
+}
+
+// Keyboard
+document.addEventListener('keydown',function(e){
+  if(e.code==='Space'&&e.target.tagName!=='INPUT'){
+    e.preventDefault();if(inFs)fsPauseBtn.click();else startBtn.click();
+  }
+  if(e.code==='Escape'&&inFs) fsExitBtn.click();
+});
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+applyColor(currentColor,false);
+updateUI();
+</script>
+</body>
+</html>
